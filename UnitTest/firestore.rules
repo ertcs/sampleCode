@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+
+    function isSignedInUser() {
+      return request.auth != null;
+    }
+    
+    function hasBasicSubs() {
+      return request.auth.token.stripeRole == "basic";
+    }
+
+    function isSubscriberWithActiveSubscription() {
+      return request.auth.token.stripeRole == "level1"||"leve2"||'level3'||"leve4";
+    }
+
+    function hasNoFutureDateData() {
+      return resource.data.postedDate < request.time.toMillis();
+    }
+    
+    function emailVerified() {
+      return request.auth.token.email_verified;
+    }
+
+    function existingData() {
+      return resource.data;
+    }
+
+    function incomingData() {
+      return request.resource.data;
+    }
+    
+    function isUserIsSeller() {
+      return request.auth.uid == incomingData().sellerId;
+    }
+
+    function isUserIsSame(uid) {
+      return request.auth.uid == uid;
+    }
+
+    function isGuestUser(){
+    	return request.auth.token.firebase.sign_in_provider =='anonymous';
+    }
+    
+    function hasAllAdsTags(){
+    return incomingData().keys()
+      .hasOnly([
+      'adId','beaconId','currencyType','datePosted','description',
+      'driveType','engineType','exteriorColour','fuelType','locationAddress',
+      'sellerId','sellerType','sellerUsername','transmissionType','vehicleBody',
+      'vehicleCondition','vehicleImageUrl','vehicleMake','vehiclePrice','vehicleTrim',
+      'vehicleType','vehicleYear']
+      )&&incomingData().vehicleImageUrl is list;
+    }
+
+    function checkNoUpdateOnNonEditableKey(keys){
+      return request.resource.data.diff(resource.data).affectedKeys()==keys;
+    }
+
+    function userIsChatDocument(messagesId){
+      return (request.auth.uid in (get(/database/messages/messagesId)).data.chat_users)
+    }
+
+    function hasAllChatHeadTags(){
+      return true;
+    }
+
+    function hasIncrementValueOnly(){
+      return request.resource.data.likes>resource.data.likes;
+    }
+      
+    match/privacypolicy/{id}{
+      allow read:if true;
+    }
+      
+
+    match /users/{userId}{
+      allow create : if isUserIsSame(userId);
+      allow read : if isSignedInUser;
+      allow update : if isUserIsSame(userId);
+    }
+
+    match /ads/{document}{
+		  allow get: if isSignedInUser();
+		  allow list : if isUserIsSeller() && request.query.limit == 20;
+		  allow update:if isUserIsSeller()&& hasAllAdsTags()&&checkNoUpdateOnNonEditableKey('docId'); 
+		  allow create:if isUserIsSeller()&& hasAllAdsTags()&&!isGuestUser(); 
+		  allow delete: if isUserIsSeller();
+		}
+
+    match/messages/{messagesId}{
+      allow get: if userIsChatDocument(messagesId);
+		  allow list : if userIsChatDocument(messagesId) && request.query.limit == 20;
+		  allow update:if userIsChatDocument(messagesId)&& hasAllChatHeadTags()&&checkNoUpdateOnNonEditableKey([editeableKeys]); 
+		  allow create:if userIsChatDocument(messagesId)&& hasAllChatHeadTags()&&!isGuestUser(); 
+		 
+    }
+      
+
+
+
+    }
+
+  }
+}
